@@ -28,6 +28,7 @@ def get_args():
         "--negative_number", default=15, type=int, help="the number of negatives"
     )
     parser.add_argument("--query_instruction_for_retrieval", default="")
+    parser.add_argument("--batch_size", default=1, type=int)
 
     return parser.parse_args()
 
