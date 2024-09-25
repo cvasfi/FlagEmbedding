@@ -33,19 +33,35 @@ def get_args():
     return parser.parse_args()
 
 
-def create_index(embeddings, use_gpu):
-    index = faiss.IndexFlatIP(len(embeddings[0]))
+def create_index(embeddings, use_gpu, nlist=100):
+    d = len(embeddings[0])  # Dimensionality of embeddings
     embeddings = np.asarray(embeddings, dtype=np.float32)
+
+    # Create an IndexIVFFlat with Inner Product (IP)
+    quantizer = faiss.IndexFlatIP(d)  # The base quantizer
+    index = faiss.IndexIVFFlat(
+        quantizer, d, nlist, faiss.METRIC_INNER_PRODUCT
+    )  # IVF with flat quantization
+
+    # Train the index on the embeddings (required for IVF indexes)
+    index.train(embeddings)
+
     if use_gpu:
         co = faiss.GpuMultipleClonerOptions()
         co.shard = True
         co.useFloat16 = True
         index = faiss.index_cpu_to_all_gpus(index, co=co)
+
+    # Add embeddings to the index
     index.add(embeddings)
+
     return index
 
 
-def batch_search(index, query, topk: int = 200, batch_size: int = 64):
+def batch_search(index, query, topk: int = 200, batch_size: int = 64, nprobe: int = 10):
+    # Set nprobe to control the number of clusters to search
+    index.nprobe = nprobe
+
     all_scores, all_inxs = [], []
     for start_index in tqdm(
         range(0, len(query), batch_size), desc="Batches", disable=len(query) < 256
@@ -56,6 +72,7 @@ def batch_search(index, query, topk: int = 200, batch_size: int = 64):
         )
         all_scores.extend(batch_scores.tolist())
         all_inxs.extend(batch_inxs.tolist())
+
     return all_scores, all_inxs
 
 
