@@ -33,15 +33,15 @@ def get_args():
     return parser.parse_args()
 
 
-def create_index(embeddings, use_gpu, nlist=100):
+def create_index_with(embeddings, use_gpu, nlist=20, m=8):  # Using Product Quantization
     d = len(embeddings[0])  # Dimensionality of embeddings
     embeddings = np.asarray(embeddings, dtype=np.float32)
 
-    # Create an IndexIVFFlat with Inner Product (IP)
+    # Create an IVF index with PQ (Product Quantization)
     quantizer = faiss.IndexFlatIP(d)  # The base quantizer
-    index = faiss.IndexIVFFlat(
-        quantizer, d, nlist, faiss.METRIC_INNER_PRODUCT
-    )  # IVF with flat quantization
+    index = faiss.IndexIVFPQ(
+        quantizer, d, nlist, m, 8
+    )  # m: number of subquantizers, 8-bit per subquantizer
 
     # Train the index on the embeddings (required for IVF indexes)
     index.train(embeddings)
@@ -49,7 +49,7 @@ def create_index(embeddings, use_gpu, nlist=100):
     if use_gpu:
         co = faiss.GpuMultipleClonerOptions()
         co.shard = True
-        co.useFloat16 = True
+        co.useFloat16 = True  # Use lower precision for faster results
         index = faiss.index_cpu_to_all_gpus(index, co=co)
 
     # Add embeddings to the index
@@ -58,7 +58,13 @@ def create_index(embeddings, use_gpu, nlist=100):
     return index
 
 
-def batch_search(index, query, topk: int = 200, batch_size: int = 64, nprobe: int = 10):
+def batch_search(
+    index,
+    query,
+    topk: int = 200,
+    batch_size: int = 256,
+    nprobe: int = 3,  # Reduced nprobe for faster search
+):
     # Set nprobe to control the number of clusters to search
     index.nprobe = nprobe
 
