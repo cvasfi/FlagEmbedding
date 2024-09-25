@@ -33,7 +33,7 @@ def get_args():
     return parser.parse_args()
 
 
-def create_index_with(embeddings, use_gpu, nlist=20, m=8):  # Using Product Quantization
+def create_index(embeddings, use_gpu, nlist=20, m=8):  # Using Product Quantization
     d = len(embeddings[0])  # Dimensionality of embeddings
     embeddings = np.asarray(embeddings, dtype=np.float32)
 
