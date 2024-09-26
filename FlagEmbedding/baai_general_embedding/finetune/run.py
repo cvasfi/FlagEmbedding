@@ -2,15 +2,12 @@ import logging
 import os
 from pathlib import Path
 
-from transformers import AutoConfig, AutoTokenizer
-from transformers import (
-    HfArgumentParser,
-    set_seed,
-)
+from peft import LoraConfig, get_peft_model
+from transformers import AutoConfig, AutoTokenizer, HfArgumentParser, set_seed
 
-from .arguments import ModelArguments, DataArguments, \
-    RetrieverTrainingArguments as TrainingArguments
-from .data import TrainDatasetForEmbedding, EmbedCollator
+from .arguments import DataArguments, LoRAArguments, ModelArguments
+from .arguments import RetrieverTrainingArguments as TrainingArguments
+from .data import EmbedCollator, TrainDatasetForEmbedding
 from .modeling import BiEncoderModel
 from .trainer import BiTrainer
 
@@ -18,17 +15,21 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
-    model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    parser = HfArgumentParser(
+        (ModelArguments, DataArguments, TrainingArguments, LoRAArguments)
+    )
+    model_args, data_args, training_args, lora_args = (
+        parser.parse_args_into_dataclasses()
+    )
     model_args: ModelArguments
     data_args: DataArguments
     training_args: TrainingArguments
-
+    lora_args: LoRAArguments
     if (
-            os.path.exists(training_args.output_dir)
-            and os.listdir(training_args.output_dir)
-            and training_args.do_train
-            and not training_args.overwrite_output_dir
+        os.path.exists(training_args.output_dir)
+        and os.listdir(training_args.output_dir)
+        and training_args.do_train
+        and not training_args.overwrite_output_dir
     ):
         raise ValueError(
             f"Output directory ({training_args.output_dir}) already exists and is not empty. Use --overwrite_output_dir to overcome."
@@ -57,24 +58,54 @@ def main():
 
     num_labels = 1
     tokenizer = AutoTokenizer.from_pretrained(
-        model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
+        (
+            model_args.tokenizer_name
+            if model_args.tokenizer_name
+            else model_args.model_name_or_path
+        ),
         cache_dir=model_args.cache_dir,
         use_fast=False,
     )
     config = AutoConfig.from_pretrained(
-        model_args.config_name if model_args.config_name else model_args.model_name_or_path,
+        (
+            model_args.config_name
+            if model_args.config_name
+            else model_args.model_name_or_path
+        ),
         num_labels=num_labels,
         cache_dir=model_args.cache_dir,
     )
-    logger.info('Config: %s', config)
+    logger.info("Config: %s", config)
 
-    model = BiEncoderModel(model_name=model_args.model_name_or_path,
-                           normlized=training_args.normlized,
-                           sentence_pooling_method=training_args.sentence_pooling_method,
-                           negatives_cross_device=training_args.negatives_cross_device,
-                           temperature=training_args.temperature,
-                           use_inbatch_neg=training_args.use_inbatch_neg,
-                           )
+    model = BiEncoderModel(
+        model_name=model_args.model_name_or_path,
+        normlized=training_args.normlized,
+        sentence_pooling_method=training_args.sentence_pooling_method,
+        negatives_cross_device=training_args.negatives_cross_device,
+        temperature=training_args.temperature,
+        use_inbatch_neg=training_args.use_inbatch_neg,
+        peft=model_args.peft,
+    )
+
+    # Maybe train with LoRA
+    if training_args.lora is True:
+        lora_config = LoraConfig(
+            r=lora_args.r,
+            lora_alpha=lora_args.alpha,
+            target_modules=[
+                "query",
+                "key",
+                "value",
+                "dense",
+            ],  # module names specific to bert (small, base, and large)
+            lora_dropout=lora_args.dropout,
+            bias="none",
+            task_type="FEATURE_EXTRACTION",
+        )
+        logger.info("LoRA config: %s", lora_config)
+
+        model.model = get_peft_model(model.model, lora_config)
+        model.model.print_trainable_parameters()
 
     if training_args.fix_position_embedding:
         for k, v in model.named_parameters():
@@ -91,9 +122,9 @@ def main():
         data_collator=EmbedCollator(
             tokenizer,
             query_max_len=data_args.query_max_len,
-            passage_max_len=data_args.passage_max_len
+            passage_max_len=data_args.passage_max_len,
         ),
-        tokenizer=tokenizer
+        tokenizer=tokenizer,
     )
 
     Path(training_args.output_dir).mkdir(parents=True, exist_ok=True)
@@ -108,4 +139,5 @@ def main():
 
 
 if __name__ == "__main__":
+    print("NEW FINETUNE")
     main()
