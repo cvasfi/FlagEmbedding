@@ -6,7 +6,7 @@ import torch
 import torch.distributed as dist
 from peft import AutoPeftModelForFeatureExtraction
 from torch import Tensor, nn
-from transformers import AutoModel
+from transformers import AutoModel, BitsAndBytesConfig
 from transformers.file_utils import ModelOutput
 
 logger = logging.getLogger(__name__)
@@ -33,11 +33,19 @@ class BiEncoderModel(nn.Module):
         use_inbatch_neg: bool = True,
         peft: bool = False,
     ):
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        )
         super().__init__()
         if peft is True:
             self.model = AutoPeftModelForFeatureExtraction.from_pretrained(model_name)
         else:
-            self.model = AutoModel.from_pretrained(model_name)
+            self.model = AutoModel.from_pretrained(
+                model_name, quantization_config=bnb_config
+            )
 
         self.cross_entropy = nn.CrossEntropyLoss(reduction="mean")
 

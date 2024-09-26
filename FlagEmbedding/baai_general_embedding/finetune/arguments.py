@@ -95,7 +95,7 @@ class RetrieverTrainingArguments(TrainingArguments):
     use_inbatch_neg: bool = field(
         default=True, metadata={"help": "use passages in the same batch as negatives"}
     )
-    lora: bool = field(default=True, metadata={"help": "Use LoRA?"})
+    lora: bool = field(default=False, metadata={"help": "Use LoRA?"})
 
 
 @dataclass
