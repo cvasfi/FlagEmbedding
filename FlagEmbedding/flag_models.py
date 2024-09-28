@@ -393,7 +393,7 @@ class FlagModel:
                 "BAAI/bge-m3", quantization_config=bnb_config
             )
             self.tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-m3")
-            self.model = PeftModel.from_pretraine.from_pretrained(
+            self.model = PeftModel.from_pretrained(
                 base_model, model_name_or_path, is_trainable=False
             )
         else:
