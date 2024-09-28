@@ -394,7 +394,7 @@ class FlagModel:
             )
             self.tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-m3")
             self.model = PeftModel.from_pretraine.from_pretrained(
-                model_name_or_path, is_trainable=False
+                base_model, model_name_or_path, is_trainable=False
             )
         else:
             self.model = AutoModel.from_pretrained(model_name_or_path)
