@@ -3,10 +3,15 @@ from typing import List, Union, cast
 import numpy as np
 import torch
 import torch.nn.functional as F
-from peft import AutoPeftModelForFeatureExtraction
+from peft import PeftModel
 from torch import Tensor
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer, is_torch_npu_available
+from transformers import (
+    AutoModel,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    is_torch_npu_available,
+)
 
 
 def last_token_pool(last_hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
@@ -377,13 +382,23 @@ class FlagModel:
         use_fp16: bool = True,
         peft: bool = False,
     ) -> None:
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
         if peft:
-            self.model = AutoPeftModelForFeatureExtraction.from_pretrained(
-                model_name_or_path
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+            )
+            base_model = AutoModel.from_pretrained(
+                "BAAI/bge-m3", quantization_config=bnb_config
+            )
+            self.tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-m3")
+            self.model = PeftModel.from_pretraine.from_pretrained(
+                model_name_or_path, is_trainable=False
             )
         else:
             self.model = AutoModel.from_pretrained(model_name_or_path)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
 
         self.query_instruction_for_retrieval = query_instruction_for_retrieval
         self.normalize_embeddings = normalize_embeddings
