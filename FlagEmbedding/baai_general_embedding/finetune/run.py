@@ -2,7 +2,7 @@ import logging
 import os
 from pathlib import Path
 
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import AutoConfig, AutoTokenizer, HfArgumentParser, set_seed
 
 from .arguments import DataArguments, LoRAArguments, ModelArguments
@@ -104,6 +104,8 @@ def main():
         )
         logger.info("LoRA config: %s", lora_config)
 
+        model.model = prepare_model_for_kbit_training(model.model, lora_config)
+        model.model.gradient_checkpointing_enable()
         model.model = get_peft_model(model.model, lora_config)
         model.model.print_trainable_parameters()
 
