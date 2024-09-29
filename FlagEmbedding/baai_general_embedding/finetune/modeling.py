@@ -4,7 +4,11 @@ from typing import Dict, Optional
 
 import torch
 import torch.distributed as dist
-from peft import AutoPeftModelForFeatureExtraction
+from peft import (
+    AutoPeftModelForFeatureExtraction,
+    PeftModel,
+    prepare_model_for_kbit_training,
+)
 from torch import Tensor, nn
 from transformers import AutoModel, BitsAndBytesConfig
 from transformers.file_utils import ModelOutput
@@ -41,7 +45,17 @@ class BiEncoderModel(nn.Module):
         )
         super().__init__()
         if peft is True:
-            self.model = AutoPeftModelForFeatureExtraction.from_pretrained(model_name)
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+            )
+            base_model = AutoModel.from_pretrained(
+                "BAAI/bge-m3", quantization_config=bnb_config
+            )
+            base_model = prepare_model_for_kbit_training(base_model)
+            self.model = PeftModel.from_pretrained(base_model, model_name)
         else:
             self.model = AutoModel.from_pretrained(
                 model_name, quantization_config=bnb_config
