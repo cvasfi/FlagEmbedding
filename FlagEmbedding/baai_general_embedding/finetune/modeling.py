@@ -52,23 +52,10 @@ class BiEncoderModel(nn.Module):
                 bnb_4bit_quant_type="nf4",
                 bnb_4bit_compute_dtype=torch.bfloat16,
             )
-            lora_config = LoraConfig(
-                r=8,
-                lora_alpha=16,
-                target_modules=[
-                    "query",
-                    "key",
-                    "value",
-                    "dense",
-                ],  # module names specific to bert (small, base, and large)
-                lora_dropout=0.1,
-                bias="none",
-                task_type="FEATURE_EXTRACTION",
-            )
             base_model = AutoModel.from_pretrained(
                 "BAAI/bge-m3", quantization_config=bnb_config
             )
-            base_model = prepare_model_for_kbit_training(base_model, lora_config)
+            base_model = prepare_model_for_kbit_training(base_model)
             self.model = PeftModel.from_pretrained(base_model, model_name)
         else:
             self.model = AutoModel.from_pretrained(
