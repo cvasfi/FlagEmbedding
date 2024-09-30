@@ -116,7 +116,7 @@ def main():
                 v.requires_grad = False
 
     train_dataset = TrainDatasetForEmbedding(args=data_args, tokenizer=tokenizer)
-
+    train_dataset.dataset.shuffle()
     trainer = BiTrainer(
         model=model,
         args=training_args,
