@@ -4,12 +4,7 @@ from typing import Dict, Optional
 
 import torch
 import torch.distributed as dist
-from peft import (
-    AutoPeftModelForFeatureExtraction,
-    LoraConfig,
-    PeftModel,
-    prepare_model_for_kbit_training,
-)
+from peft import PeftModel, prepare_model_for_kbit_training
 from torch import Tensor, nn
 from transformers import AutoModel, BitsAndBytesConfig
 from transformers.file_utils import ModelOutput
@@ -56,7 +51,10 @@ class BiEncoderModel(nn.Module):
                 "BAAI/bge-m3", quantization_config=bnb_config
             )
             base_model = prepare_model_for_kbit_training(base_model)
-            self.model = PeftModel.from_pretrained(base_model, model_name)
+            base_model.gradient_checkpointing_enable()
+            self.model = PeftModel.from_pretrained(
+                base_model, model_name, is_trainable=True
+            )
         else:
             self.model = AutoModel.from_pretrained(
                 model_name, quantization_config=bnb_config
