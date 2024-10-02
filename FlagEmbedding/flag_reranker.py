@@ -294,7 +294,7 @@ class FlagReranker:
         if use_fp16:
             self.model.half()
 
-        self.model = self.model.to(self.device)
+        # self.model = self.model.to(self.device)
 
         self.model.eval()
 

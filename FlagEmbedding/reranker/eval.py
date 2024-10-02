@@ -6,6 +6,7 @@ import datasets
 import faiss
 import numpy as np
 import torch
+from sklearn.metrics import ndcg_score, roc_auc_score
 from tqdm import tqdm
 from transformers import HfArgumentParser
 
@@ -116,12 +117,12 @@ def index(
     # create faiss index
     faiss_index = faiss.index_factory(dim, index_factory, faiss.METRIC_INNER_PRODUCT)
 
-    if model.device == torch.device("cuda"):
-        # co = faiss.GpuClonerOptions()
-        co = faiss.GpuMultipleClonerOptions()
-        co.useFloat16 = True
-        # faiss_index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, faiss_index, co)
-        faiss_index = faiss.index_cpu_to_all_gpus(faiss_index, co)
+    # if model.device == torch.device("cuda"):
+    #     # co = faiss.GpuClonerOptions()
+    #     co = faiss.GpuMultipleClonerOptions()
+    #     co.useFloat16 = True
+    #     # faiss_index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, faiss_index, co)
+    #     faiss_index = faiss.index_cpu_to_all_gpus(faiss_index, co)
 
     # NOTE: faiss only accepts float32
     logger.info("Adding embeddings...")
@@ -163,79 +164,99 @@ def search(
     return all_scores, all_indices
 
 
-def evaluate(preds, preds_scores, labels, cutoffs=[1, 10, 100]):
-    """
-    Evaluate MRR and Recall at cutoffs.
-    """
+def evaluate(similarities: np.ndarray, labels: np.ndarray, cutoffs=[1, 10, 100]):
     metrics = {}
-
-    # MRR
     mrrs = np.zeros(len(cutoffs))
-    for pred, label in zip(preds, labels):
-        jump = False
-        for i, x in enumerate(pred, 1):
-            if x in label:
+    recalls = np.zeros(len(cutoffs))
+    for i, (sim, gt) in enumerate(zip(similarities, labels)):
+        indices = np.flip(np.argsort(sim))
+        similarities[i] = sim[indices]  # k
+        labels[i] = gt[indices]
+
+    for sim, gt in zip(similarities, labels):
+        # MRR
+        for i, ordered_label in enumerate(gt, 1):
+            if ordered_label:
                 for k, cutoff in enumerate(cutoffs):
                     if i <= cutoff:
                         mrrs[k] += 1 / i
-                jump = True
-            if jump:
                 break
-    mrrs /= len(preds)
-    for i, cutoff in enumerate(cutoffs):
-        mrr = mrrs[i]
-        metrics[f"MRR@{cutoff}"] = mrr
 
-    # Recall
-    recalls = np.zeros(len(cutoffs))
-    for pred, label in zip(preds, labels):
+        # Recall
         for k, cutoff in enumerate(cutoffs):
-            recall = np.intersect1d(label, pred[:cutoff])
-            recalls[k] += len(recall) / max(min(len(recall), len(label)), 1)
-    recalls /= len(preds)
+            recall = np.count_nonzero(gt[:cutoff])
+            total = np.count_nonzero(gt)
+            recalls[k] += recall / max(min(recall, total), 1)
+
+    mrrs /= len(similarities)
+    for i, cutoff in enumerate(cutoffs):
+        metrics[f"MRR@{cutoff}"] = mrrs[i]
+
+    recalls /= len(similarities)
     for i, cutoff in enumerate(cutoffs):
         recall = recalls[i]
         metrics[f"Recall@{cutoff}"] = recall
 
-    # AUC
-    pred_hard_encodings = []
-    for pred, label in zip(preds, labels):
-        pred_hard_encoding = np.isin(pred, label).astype(int).tolist()
-        pred_hard_encodings.append(pred_hard_encoding)
-
-    from sklearn.metrics import ndcg_score, roc_auc_score, roc_curve
-
-    pred_hard_encodings1d = np.asarray(pred_hard_encodings).flatten()
-    preds_scores1d = preds_scores.flatten()
-    auc = roc_auc_score(pred_hard_encodings1d, preds_scores1d)
-
-    metrics["AUC@100"] = auc
-
-    # nDCG
+    metrics["AUC"] = roc_auc_score(labels.flatten().astype(int), similarities.flatten())
     for k, cutoff in enumerate(cutoffs):
-        nDCG = ndcg_score(pred_hard_encodings, preds_scores, k=cutoff)
+        nDCG = ndcg_score(labels, similarities, k=cutoff)
         metrics[f"nDCG@{cutoff}"] = nDCG
 
     return metrics
 
 
-def make_rr_dataset(model: FlagReranker, queries: datasets, preds: List, labels: List):
+class RRDataset(datasets.Dataset):
+    def __init__(self, data_in):
+        self._data = data_in
+
+    def __len__(self):
+        return len(self._data)
+
+    def __getitem__(self, idx):
+        return self._data[idx]
+
+
+def make_rr_dataset(queries: datasets, preds: List, labels: List):
     dataset_list = []
-    labels = []
+    rr_labels = []
     for query, pred, label in zip(queries, preds, labels):
         false_preds = []
-        for pred in preds:
-            if pred not in label:
-                false_preds.append(pred)
+        for pred_el in pred:
+            if pred_el not in label:
+                false_preds.append(pred_el)
         num_to_pop = len(false_preds) + len(label) - len(pred)
         for _ in range(num_to_pop):
             false_preds.pop()
         for gt in label:
-            dataset_list.append((query, gt))
-            labels.append(True)
+            dataset_list.append([query["query"], gt])
+            rr_labels.append(True)
         for false_pred in false_preds:
-            dataset_list.append((query, false_pred))
-            labels.append(False)
+            dataset_list.append([query["query"], false_pred])
+            rr_labels.append(False)
+    return RRDataset(dataset_list), rr_labels
+
+
+def rr_predict(
+    model: FlagReranker,
+    rr_dataset: RRDataset,
+    batch_size: int,
+    max_len: int,
+    k: int,
+    rr_labels: List[bool],
+):
+    similarities = model.compute_score(
+        sentence_pairs=rr_dataset._data,
+        batch_size=batch_size,
+        max_length=max_len,
+        normalize=True,
+    )
+    similarities = np.array(similarities, dtype=np.float32)
+    rr_labels = np.array(rr_labels, dtype=bool)
+    num_queries = int(len(similarities) / k)
+    similarities = similarities.reshape((num_queries, k))
+    rr_labels = rr_labels.reshape((num_queries, k))
+
+    return similarities, rr_labels
 
 
 def main():
@@ -295,11 +316,20 @@ def main():
     for sample in eval_data:
         ground_truths.append(sample["positive"])
 
-    reranker = FlagReranker(
-        args.reranker, use_fp16=True
+    model = FlagReranker(
+        args.reranker, use_fp16=False
     )  # Setting use_fp16 to True speeds up computation with a slight performance degradation
 
-    metrics = evaluate(retrieval_results, scores, ground_truths)
+    rr_dataset, rr_labels = make_rr_dataset(eval_data, retrieval_results, ground_truths)
+    similarities, rr_labels = rr_predict(
+        model=model,
+        rr_dataset=rr_dataset,
+        batch_size=args.batch_size,
+        max_len=args.max_passage_length,
+        k=args.k,
+        rr_labels=rr_labels,
+    )
+    metrics = evaluate(similarities, rr_labels)
 
     print(metrics)
 
