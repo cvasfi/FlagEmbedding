@@ -18,7 +18,7 @@ from FlagEmbedding import FlagReranker
 @dataclass
 class Args:
     encoder: str = field(
-        default="BAAI/bge-base-en-v1.5", metadata={"help": "The encoder name or path."}
+        default="BAAI/bge-m3", metadata={"help": "The encoder name or path."}
     )
 
     reranker: str = field(
@@ -220,9 +220,22 @@ def evaluate(preds, preds_scores, labels, cutoffs=[1, 10, 100]):
 
 
 def make_rr_dataset(model: FlagReranker, queries: datasets, preds: List, labels: List):
+    dataset_list = []
+    labels = []
     for query, pred, label in zip(queries, preds, labels):
-        updated_pre = []
+        false_preds = []
         for pred in preds:
+            if pred not in label:
+                false_preds.append(pred)
+        num_to_pop = len(false_preds) + len(label) - len(pred)
+        for _ in range(num_to_pop):
+            false_preds.pop()
+        for gt in label:
+            dataset_list.append((query, gt))
+            labels.append(True)
+        for false_pred in false_preds:
+            dataset_list.append((query, false_pred))
+            labels.append(False)
 
 
 def main():
