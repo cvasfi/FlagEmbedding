@@ -29,7 +29,7 @@ def get_args():
     )
     parser.add_argument("--query_instruction_for_retrieval", default="")
     parser.add_argument("--batch_size", default=1, type=int)
-
+    parser.add_argument("--peft", action="store_true", help="load peft")
     return parser.parse_args()
 
 
@@ -138,6 +138,7 @@ if __name__ == "__main__":
     model = FlagModel(
         args.model_name_or_path,
         query_instruction_for_retrieval=args.query_instruction_for_retrieval,
+        peft=args.peft,
     )
 
     find_knn_neg(
