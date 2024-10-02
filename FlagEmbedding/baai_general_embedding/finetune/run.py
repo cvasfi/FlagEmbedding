@@ -1,5 +1,6 @@
 import logging
 import os
+import random
 from pathlib import Path
 
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
@@ -10,7 +11,6 @@ from .arguments import RetrieverTrainingArguments as TrainingArguments
 from .data import EmbedCollator, TrainDatasetForEmbedding
 from .modeling import BiEncoderModel
 from .trainer import BiTrainer
-import random
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ def main():
                 v.requires_grad = False
 
     train_dataset = TrainDatasetForEmbedding(args=data_args, tokenizer=tokenizer)
-    train_dataset = train_dataset.dataset.shuffle(random.randint(0, 10000))
+    train_dataset.dataset = train_dataset.dataset.shuffle(random.randint(0, 10000))
     trainer = BiTrainer(
         model=model,
         args=training_args,
