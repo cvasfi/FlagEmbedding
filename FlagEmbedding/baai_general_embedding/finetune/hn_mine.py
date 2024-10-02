@@ -96,9 +96,9 @@ def find_knn_neg(
         corpus = list(set(corpus))
 
     print(f"inferencing embedding for corpus (number={len(corpus)})--------------")
-    p_vecs = model.encode(corpus, batch_size=batch_size, max_length=2100)
+    p_vecs = model.encode(corpus, batch_size=batch_size, max_length=3000)
     print(f"inferencing embedding for queries (number={len(queries)})--------------")
-    q_vecs = model.encode_queries(queries, batch_size=batch_size, max_length=400)
+    q_vecs = model.encode_queries(queries, batch_size=batch_size, max_length=350)
 
     print("create index and search------------------")
     index = create_index(p_vecs, use_gpu=use_gpu)
