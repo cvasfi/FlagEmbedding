@@ -10,6 +10,7 @@ from .arguments import RetrieverTrainingArguments as TrainingArguments
 from .data import EmbedCollator, TrainDatasetForEmbedding
 from .modeling import BiEncoderModel
 from .trainer import BiTrainer
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +124,7 @@ def main():
                 v.requires_grad = False
 
     train_dataset = TrainDatasetForEmbedding(args=data_args, tokenizer=tokenizer)
-    train_dataset.dataset.shuffle()
+    train_dataset = train_dataset.dataset.shuffle(random.randint(0, 10000))
     trainer = BiTrainer(
         model=model,
         args=training_args,
