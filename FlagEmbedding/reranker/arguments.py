@@ -10,33 +10,56 @@ class ModelArguments:
     """
 
     model_name_or_path: str = field(
-        metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
+        metadata={
+            "help": "Path to pretrained model or model identifier from huggingface.co/models"
+        }
     )
     config_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
+        default=None,
+        metadata={
+            "help": "Pretrained config name or path if not the same as model_name"
+        },
     )
     tokenizer_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
+        default=None,
+        metadata={
+            "help": "Pretrained tokenizer name or path if not the same as model_name"
+        },
     )
     cache_dir: Optional[str] = field(
-        default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
+        default=None,
+        metadata={
+            "help": "Where do you want to store the pretrained models downloaded from s3"
+        },
+    )
+    lora: bool = field(default=False, metadata={"help": "Use LoRA?"})
+
+    resume_peft: bool = field(
+        default=False, metadata={"help": "Load model from a PEFT checkpoint?"}
     )
 
 
 @dataclass
 class DataArguments:
-    train_data: str = field(
-        default=None, metadata={"help": "Path to corpus"}
-    )
+    train_data: str = field(default=None, metadata={"help": "Path to corpus"})
     train_group_size: int = field(default=8)
     max_len: int = field(
         default=512,
         metadata={
             "help": "The maximum total input sequence length after tokenization for input text. Sequences longer "
-                    "than this will be truncated, sequences shorter will be padded."
+            "than this will be truncated, sequences shorter will be padded."
         },
     )
 
     def __post_init__(self):
         if not os.path.exists(self.train_data):
-            raise FileNotFoundError(f"cannot find file: {self.train_data}, please set a true path")
+            raise FileNotFoundError(
+                f"cannot find file: {self.train_data}, please set a true path"
+            )
+
+
+@dataclass
+class LoRAArguments:
+    alpha: int = field(default=16, metadata={"help": "LoRA alpha parameter."})
+    r: int = field(default=8, metadata={"help": "LoRA rank parameter."})
+    dropout: float = field(default=0.0, metadata={"help": "LoRA dropout parameter."})

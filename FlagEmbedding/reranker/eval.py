@@ -61,7 +61,8 @@ class Args:
         default="embeddings.memmap", metadata={"help": "Path to save embeddings."}
     )
 
-    peft: bool = field(default="False")
+    peft_encoder: bool = field(default="False")
+    peft_reranker: bool = field(default="False")
 
 
 def index(
