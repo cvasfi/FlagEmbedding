@@ -276,7 +276,9 @@ class FlagReranker:
                 bnb_4bit_compute_dtype=torch.bfloat16,
             )
             base_model = AutoModelForSequenceClassification.from_pretrained(
-                "BAAI/bge-reranker-v2-m3", quantization_config=bnb_config
+                "BAAI/bge-reranker-v2-m3",
+                cache_dir=cache_dir,
+                quantization_config=bnb_config,
             )
             self.tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-reranker-v2-m3")
             self.model = PeftModel.from_pretrained(

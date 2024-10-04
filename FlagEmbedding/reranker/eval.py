@@ -1,3 +1,4 @@
+import gc
 import logging
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -318,7 +319,9 @@ def main():
     ground_truths = []
     for sample in eval_data:
         ground_truths.append(sample["positive"])
-
+    model = None
+    gc.collect()
+    torch.cuda.empty_cache()
     model = FlagReranker(
         args.reranker, use_fp16=False, peft=args.peft_reranker
     )  # Setting use_fp16 to True speeds up computation with a slight performance degradation
