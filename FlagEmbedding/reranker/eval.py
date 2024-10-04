@@ -285,7 +285,7 @@ def main():
             else None
         ),
         use_fp16=args.fp16,
-        peft=args.peft,
+        peft=args.peft_encoder,
         quantize=True,
     )
 
@@ -320,7 +320,7 @@ def main():
         ground_truths.append(sample["positive"])
 
     model = FlagReranker(
-        args.reranker, use_fp16=False
+        args.reranker, use_fp16=False, peft=args.peft_reranker
     )  # Setting use_fp16 to True speeds up computation with a slight performance degradation
 
     rr_dataset, rr_labels = make_rr_dataset(eval_data, retrieval_results, ground_truths)

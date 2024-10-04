@@ -259,21 +259,36 @@ class FlagReranker:
         use_fp16: bool = False,
         cache_dir: str = None,
         device: Union[str, int] = None,
+        peft=False,
     ) -> None:
 
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_name_or_path, cache_dir=cache_dir
-        )
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_use_double_quant=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
-        self.model = AutoModelForSequenceClassification.from_pretrained(
-            model_name_or_path, cache_dir=cache_dir, quantization_config=bnb_config
-        )
-
+        if peft:
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+            )
+            base_model = AutoModelForSequenceClassification.from_pretrained(
+                "BAAI/bge-reranker-v2-m3", quantization_config=bnb_config
+            )
+            self.tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-reranker-v2-m3")
+            self.model = PeftModel.from_pretrained(
+                base_model, model_name_or_path, is_trainable=False
+            )
+        else:
+            self.model = AutoModelForSequenceClassification.from_pretrained(
+                model_name_or_path, cache_dir=cache_dir, quantization_config=bnb_config
+            )
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                model_name_or_path, cache_dir=cache_dir
+            )
         if device and isinstance(device, str):
             self.device = torch.device(device)
             if device == "cpu":
