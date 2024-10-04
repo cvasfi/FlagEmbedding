@@ -381,6 +381,7 @@ class FlagModel:
         query_instruction_for_retrieval: str = None,
         use_fp16: bool = True,
         peft: bool = False,
+        quantize=False,
     ) -> None:
         if peft:
             bnb_config = BitsAndBytesConfig(
@@ -397,7 +398,18 @@ class FlagModel:
                 base_model, model_name_or_path, is_trainable=False
             )
         else:
-            self.model = AutoModel.from_pretrained(model_name_or_path)
+            if quantize:
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.bfloat16,
+                )
+                self.model = AutoModel.from_pretrained(
+                    model_name_or_path, quantization_config=bnb_config
+                )
+            else:
+                self.model = AutoModel.from_pretrained(model_name_or_path)
             self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
 
         self.query_instruction_for_retrieval = query_instruction_for_retrieval

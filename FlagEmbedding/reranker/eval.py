@@ -45,6 +45,7 @@ class Args:
         default=128, metadata={"help": "Max passage length."}
     )
     batch_size: int = field(default=256, metadata={"help": "Inference batch size."})
+    batch_size_rr: int = field(default=256, metadata={"help": "Inference batch size."})
     index_factory: str = field(
         default="Flat", metadata={"help": "Faiss index factory."}
     )
@@ -284,6 +285,7 @@ def main():
         ),
         use_fp16=args.fp16,
         peft=args.peft,
+        quantize=True,
     )
 
     faiss_index = index(
@@ -324,7 +326,7 @@ def main():
     similarities, rr_labels = rr_predict(
         model=model,
         rr_dataset=rr_dataset,
-        batch_size=args.batch_size,
+        batch_size=args.batch_size_rr,
         max_len=args.max_passage_length,
         k=args.k,
         rr_labels=rr_labels,
