@@ -100,7 +100,6 @@ def main():
             r=lora_args.r,
             lora_alpha=lora_args.alpha,
             target_modules=[
-                "word_embeddings",
                 "query",
                 "key",
                 "value",
