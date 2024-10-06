@@ -94,28 +94,42 @@ def main():
             if param.requires_grad:
                 print(f"{name}: {param.size()}")
 
+    lora_config = LoraConfig(
+        r=lora_args.r,
+        lora_alpha=lora_args.alpha,
+        target_modules=[
+            "word_embeddings",
+            "query",
+            "key",
+            "value",
+            "dense",
+        ],  # module names specific to bert (small, base, and large)
+        lora_dropout=lora_args.dropout,
+        bias="none",
+        task_type="FEATURE_EXTRACTION",
+    )
     # Maybe train with LoRA
     if training_args.lora is True:
-        lora_config = LoraConfig(
-            r=lora_args.r,
-            lora_alpha=lora_args.alpha,
-            target_modules=[
-                "query",
-                "key",
-                "value",
-                "dense",
-            ],  # module names specific to bert (small, base, and large)
-            lora_dropout=lora_args.dropout,
-            bias="none",
-            task_type="FEATURE_EXTRACTION",
-        )
         logger.info("LoRA config: %s", lora_config)
 
         model.model = prepare_model_for_kbit_training(model.model, lora_config)
         model.model.gradient_checkpointing_enable()
         model.model = get_peft_model(model.model, lora_config)
         model.model.print_trainable_parameters()
-        print_trainable_parameters(model.model)
+        # print_trainable_parameters(model.model)
+
+    if training_args.reapply_lora and not model_args.peft:
+        raise ValueError("can only reapply lora on a peft model")
+
+    if training_args.reapply_lora is True:
+        logger.info("LoRA config: %s", lora_config)
+        model.model = model.model.merge_and_unload()
+        model.model = prepare_model_for_kbit_training(model.model, lora_config)
+        model.model.gradient_checkpointing_enable()
+        model.model = get_peft_model(model.model, lora_config)
+        model.model.print_trainable_parameters()
+        # print_trainable_parameters(model.model)
+
     if training_args.fix_position_embedding:
         for k, v in model.named_parameters():
             if "position_embeddings" in k:
