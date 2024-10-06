@@ -1,7 +1,7 @@
 import argparse
 
 from sentence_transformers import SentenceTransformer, models
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, BitsAndBytesConfig
 from transformers.trainer import *
 
 
@@ -11,9 +11,16 @@ def main():
     parser.add_argument("--peft_model_path", default=None, type=str)
     parser.add_argument("--out_model_path", default=None, type=str)
     args = parser.parse_args()
-
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+    )
     # Load the LoRA adapters
-    base_model = AutoModel.from_pretrained(args.base_model)
+    base_model = AutoModel.from_pretrained(
+        args.base_model, quantization_config=bnb_config
+    )
     tokenizer = AutoTokenizer.from_pretrained(args.base_model)
 
     model = PeftModel.from_pretrained(base_model, args.peft_model_path)
