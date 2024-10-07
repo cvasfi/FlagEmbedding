@@ -137,7 +137,9 @@ def main():
         logger.info("LoRA config: %s", lora_config)
         print(model.model.modules_to_save)
         model.model = LoraModel(model.model, new_lora_config, "embeddings")
-        model.model.add_weighted_adapter(["default", "embeddings"])
+        model.model.add_weighted_adapter(
+            ["default", "embeddings"], [1.0, 1.0], "merged"
+        )
         # Step 3: Use BasicTuner to merge adapters
         # tuner = BaseTunerLayer(model, {"embeddings": new_lora_config})
         # tuner.merge_adapter(["embeddings", "default"])
