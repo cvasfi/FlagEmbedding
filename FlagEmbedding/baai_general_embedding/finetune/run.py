@@ -122,8 +122,19 @@ def main():
         raise ValueError("can only reapply lora on a peft model")
 
     if training_args.reapply_lora is True:
+        new_lora_config = LoraConfig(
+            r=lora_args.r,
+            lora_alpha=lora_args.alpha,
+            target_modules=[
+                "word_embeddings",
+            ],  # module names specific to bert (small, base, and large)
+            lora_dropout=lora_args.dropout,
+            bias="none",
+            task_type="FEATURE_EXTRACTION",
+        )
         logger.info("LoRA config: %s", lora_config)
-        model.model = get_peft_model(model.model, lora_config)
+        model.model.add_adapter("embeddings", new_lora_config)
+        print(model.model.active_adapters())
         model.model.print_trainable_parameters()
         # print_trainable_parameters(model.model)
 
