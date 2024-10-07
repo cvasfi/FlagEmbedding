@@ -53,6 +53,7 @@ class Args:
     )
 
     peft: bool = field(default="False")
+    quantize_base: bool = field(default="False")
 
 
 def index(
@@ -237,6 +238,7 @@ def main():
         ),
         use_fp16=args.fp16,
         peft=args.peft,
+        quantize=args.quantize_base,
     )
 
     faiss_index = index(
