@@ -141,10 +141,11 @@ def main():
             adapters=["default", "embeddings"],
             weights=[1.0, 1.0],
             adapter_name="combined",
-            combination_type="cat",
+            combination_type="linear",
         )
         model.model.delete_adapter("default")
         model.model.delete_adapter("embeddings")
+        model.model.set_adapter("combined")
         print(model.model.active_adapter)
 
         # tuner = BaseTunerLayer(model, {"embeddings": new_lora_config})
