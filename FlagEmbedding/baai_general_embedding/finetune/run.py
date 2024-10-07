@@ -123,9 +123,6 @@ def main():
 
     if training_args.reapply_lora is True:
         logger.info("LoRA config: %s", lora_config)
-        model.model = model.model.merge_and_unload()
-        model.model = prepare_model_for_kbit_training(model.model, lora_config)
-        model.model.gradient_checkpointing_enable()
         model.model = get_peft_model(model.model, lora_config)
         model.model.print_trainable_parameters()
         # print_trainable_parameters(model.model)
