@@ -5,6 +5,7 @@ from pathlib import Path
 
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from peft.mapping import inject_adapter_in_model
+from peft.peft_model import PeftModel
 from peft.tuners.lora import LoraModel
 from transformers import AutoConfig, AutoTokenizer, HfArgumentParser, set_seed
 
@@ -135,11 +136,10 @@ def main():
             task_type="FEATURE_EXTRACTION",
         )
         logger.info("LoRA config: %s", lora_config)
-        print(model.model.modules_to_save)
-        model.model = LoraModel(model.model, new_lora_config, "embeddings")
-        model.model.add_weighted_adapter(
-            ["default", "embeddings"], [1.0, 1.0], "merged"
-        )
+        model.model.add_adapter("embeddings", new_lora_config)
+        model.model.add_weighted_adapters(["default", "embeddings"], [1.0, 1.0], "combined", combination_type="cat")
+        model.model.delete_adapter("default")
+        model.model.delete_adapter("embeddings")
         # Step 3: Use BasicTuner to merge adapters
         # tuner = BaseTunerLayer(model, {"embeddings": new_lora_config})
         # tuner.merge_adapter(["embeddings", "default"])
@@ -178,6 +178,7 @@ def main():
     if trainer.is_world_process_zero():
         tokenizer.save_pretrained(training_args.output_dir)
 
+def merge(model: PeftModel)
 
 if __name__ == "__main__":
     print("NEW FINETUNE")
