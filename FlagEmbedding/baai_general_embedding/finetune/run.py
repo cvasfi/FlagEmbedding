@@ -134,7 +134,7 @@ def main():
         )
         logger.info("LoRA config: %s", lora_config)
         model.model.add_adapter("embeddings", new_lora_config)
-        print(model.model.active_adapters())
+        print(model.model.active_adapters)
         model.model.print_trainable_parameters()
         # print_trainable_parameters(model.model)
 
