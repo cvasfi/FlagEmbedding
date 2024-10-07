@@ -137,15 +137,21 @@ def main():
         )
         logger.info("LoRA config: %s", lora_config)
         model.model.add_adapter("embeddings", new_lora_config)
-        model.model.add_weighted_adapters(["default", "embeddings"], [1.0, 1.0], "combined", combination_type="cat")
+        model.model.add_weighted_adapter(
+            adapters=["default", "embeddings"],
+            weights=[1.0, 1.0],
+            adapter_name="combined",
+            combination_type="cat",
+        )
         model.model.delete_adapter("default")
         model.model.delete_adapter("embeddings")
-        # Step 3: Use BasicTuner to merge adapters
+        print(model.model.active_adapter)
+
         # tuner = BaseTunerLayer(model, {"embeddings": new_lora_config})
         # tuner.merge_adapter(["embeddings", "default"])
 
         #        print(model.model.active_adapters)
-        # model.model.print_trainable_parameters()
+        model.model.print_trainable_parameters()
         print_trainable_parameters(model.model)
 
     if training_args.fix_position_embedding:
@@ -178,7 +184,6 @@ def main():
     if trainer.is_world_process_zero():
         tokenizer.save_pretrained(training_args.output_dir)
 
-def merge(model: PeftModel)
 
 if __name__ == "__main__":
     print("NEW FINETUNE")
