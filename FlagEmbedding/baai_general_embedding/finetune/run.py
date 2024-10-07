@@ -5,7 +5,7 @@ from pathlib import Path
 
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from peft.mapping import inject_adapter_in_model
-from peft.tuners.tuners_utils import BaseTunerLayer
+from peft.tuners.lora import LoraModel
 from transformers import AutoConfig, AutoTokenizer, HfArgumentParser, set_seed
 
 from .arguments import DataArguments, LoRAArguments, ModelArguments
@@ -136,9 +136,8 @@ def main():
         )
         logger.info("LoRA config: %s", lora_config)
         print(model.model.modules_to_save)
-        model.model = inject_adapter_in_model(
-            new_lora_config, model.model, "embeddings"
-        )
+        model.model = LoraModel(model.model, new_lora_config, "embeddings")
+        model.model.add_weighted_adapter(["default", "embeddings"])
         # Step 3: Use BasicTuner to merge adapters
         # tuner = BaseTunerLayer(model, {"embeddings": new_lora_config})
         # tuner.merge_adapter(["embeddings", "default"])
