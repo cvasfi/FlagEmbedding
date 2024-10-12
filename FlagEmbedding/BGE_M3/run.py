@@ -1,26 +1,25 @@
 import logging
 import os
 from pathlib import Path
-import torch.distributed as dist
 
-from transformers import AutoConfig, AutoTokenizer
+import torch.distributed as dist
+from peft import PeftModel, prepare_model_for_kbit_training
 from transformers import (
+    AutoConfig,
+    AutoTokenizer,
     HfArgumentParser,
+    TrainerCallback,
+    TrainerControl,
+    TrainerState,
+    TrainingArguments,
     set_seed,
 )
-from transformers import (
-    TrainerCallback,
-    TrainingArguments,
-    TrainerState,
-    TrainerControl
-)
 
-from .arguments import ModelArguments, DataArguments, \
-    RetrieverTrainingArguments as TrainingArguments
-from .data import SameDatasetTrainDataset, EmbedCollator
+from .arguments import DataArguments, ModelArguments
+from .arguments import RetrieverTrainingArguments as TrainingArguments
+from .data import EmbedCollator, SameDatasetTrainDataset
 from .modeling import BGEM3Model
 from .trainer import BiTrainer
-
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +27,19 @@ logger = logging.getLogger(__name__)
 class TrainerCallbackForDataRefresh(TrainerCallback):
     def __init__(self, train_dataset):
         self.train_dataset = train_dataset
-        
-    def on_epoch_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
-            """
-            Event called at the end of an epoch.
-            """
-            self.train_dataset.refresh_epoch()
-        
+
+    def on_epoch_end(
+        self,
+        args: TrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        **kwargs,
+    ):
+        """
+        Event called at the end of an epoch.
+        """
+        self.train_dataset.refresh_epoch()
+
 
 def main():
     parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
@@ -44,10 +49,10 @@ def main():
     training_args: TrainingArguments
 
     if (
-            os.path.exists(training_args.output_dir)
-            and os.listdir(training_args.output_dir)
-            and training_args.do_train
-            and not training_args.overwrite_output_dir
+        os.path.exists(training_args.output_dir)
+        and os.listdir(training_args.output_dir)
+        and training_args.do_train
+        and not training_args.overwrite_output_dir
     ):
         raise ValueError(
             f"Output directory ({training_args.output_dir}) already exists and is not empty. Use --overwrite_output_dir to overcome."
@@ -76,27 +81,57 @@ def main():
 
     num_labels = 1
     tokenizer = AutoTokenizer.from_pretrained(
-        model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
+        (
+            model_args.tokenizer_name
+            if model_args.tokenizer_name
+            else model_args.model_name_or_path
+        ),
         cache_dir=model_args.cache_dir,
         use_fast=False,
     )
     config = AutoConfig.from_pretrained(
-        model_args.config_name if model_args.config_name else model_args.model_name_or_path,
+        (
+            model_args.config_name
+            if model_args.config_name
+            else model_args.model_name_or_path
+        ),
         num_labels=num_labels,
         cache_dir=model_args.cache_dir,
     )
-    logger.info('Config: %s', config)
+    logger.info("Config: %s", config)
 
-    model = BGEM3Model(model_name=model_args.model_name_or_path,
-                       normlized=training_args.normlized,
-                       sentence_pooling_method=training_args.sentence_pooling_method,
-                       negatives_cross_device=training_args.negatives_cross_device,
-                       temperature=training_args.temperature,
-                       enable_sub_batch=training_args.enable_sub_batch,
-                       unified_finetuning=training_args.unified_finetuning,
-                       use_self_distill=training_args.use_self_distill,
-                       colbert_dim=training_args.colbert_dim,
-                       self_distill_start_step=training_args.self_distill_start_step)
+    if model_args.resume_peft:
+        model = BGEM3Model(
+            model_name="BAAI/bge-m3",
+            normlized=training_args.normlized,
+            sentence_pooling_method=training_args.sentence_pooling_method,
+            negatives_cross_device=training_args.negatives_cross_device,
+            temperature=training_args.temperature,
+            enable_sub_batch=training_args.enable_sub_batch,
+            unified_finetuning=training_args.unified_finetuning,
+            use_self_distill=training_args.use_self_distill,
+            colbert_dim=training_args.colbert_dim,
+            self_distill_start_step=training_args.self_distill_start_step,
+        )
+
+        model.model = prepare_model_for_kbit_training(model.model)
+        model.model.gradient_checkpointing_enable()
+        model.model = PeftModel.from_pretrained(
+            model.model, model_args.model_name_or_path, is_trainable=True
+        )
+    else:
+        model = BGEM3Model(
+            model_name=model_args.model_name_or_path,
+            normlized=training_args.normlized,
+            sentence_pooling_method=training_args.sentence_pooling_method,
+            negatives_cross_device=training_args.negatives_cross_device,
+            temperature=training_args.temperature,
+            enable_sub_batch=training_args.enable_sub_batch,
+            unified_finetuning=training_args.unified_finetuning,
+            use_self_distill=training_args.use_self_distill,
+            colbert_dim=training_args.colbert_dim,
+            self_distill_start_step=training_args.self_distill_start_step,
+        )
 
     if training_args.fix_position_embedding:
         for k, v in model.named_parameters():
@@ -105,40 +140,42 @@ def main():
                 v.requires_grad = False
     if training_args.fix_encoder:
         for k, v in model.named_parameters():
-            if "colbert_linear" in k or 'sparse_linear' in k:
+            if "colbert_linear" in k or "sparse_linear" in k:
                 logging.info(f"train the parameters for {k}")
             else:
                 v.requires_grad = False
 
     # print(f"===========================Rank {dist.get_rank()}: start loading data===========================")
     if data_args.same_task_within_batch:
-        train_dataset = SameDatasetTrainDataset(args=data_args, 
-                                                batch_size=training_args.per_device_train_batch_size, 
-                                                seed=training_args.seed, 
-                                                num_processes=training_args.world_size,
-                                                process_index=training_args.process_index)
+        train_dataset = SameDatasetTrainDataset(
+            args=data_args,
+            batch_size=training_args.per_device_train_batch_size,
+            seed=training_args.seed,
+            num_processes=training_args.world_size,
+            process_index=training_args.process_index,
+        )
         training_args.per_device_train_batch_size = 1
-        training_args.dataloader_num_workers = 0    # avoid multi-processes
+        training_args.dataloader_num_workers = 0  # avoid multi-processes
     else:
         raise NotImplementedError("Not support `same_task_within_batch=False`")
 
     data_collator = EmbedCollator(
         tokenizer,
         query_max_len=data_args.query_max_len,
-        passage_max_len=data_args.passage_max_len
+        passage_max_len=data_args.passage_max_len,
     )
-    
+
     trainer = BiTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         data_collator=data_collator,
-        tokenizer=tokenizer
+        tokenizer=tokenizer,
     )
 
     if data_args.same_task_within_batch:
         trainer.add_callback(TrainerCallbackForDataRefresh(train_dataset))
-    
+
     Path(training_args.output_dir).mkdir(parents=True, exist_ok=True)
 
     # Training
