@@ -79,12 +79,7 @@ class BGEM3Model(nn.Module):
                 cache_dir=cache_folder,
                 ignore_patterns=["flax_model.msgpack", "rust_model.ot", "tf_model.h5"],
             )
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-        )
+        bnb_config = BitsAndBytesConfig(load_in_8bit=True)
         self.model = AutoModel.from_pretrained(
             model_name, quantization_config=bnb_config
         )
