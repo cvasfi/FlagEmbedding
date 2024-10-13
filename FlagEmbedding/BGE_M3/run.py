@@ -144,7 +144,6 @@ def main():
                 if param.requires_grad:
                     print(f"{name}: {param.size()}")
 
-        print_trainable_parameters(model.model)
         if training_args.lora:
             lora_config = LoraConfig(
                 r=lora_args.r,
@@ -163,6 +162,8 @@ def main():
             model.model.gradient_checkpointing_enable()
             model.model = get_peft_model(model.model, lora_config)
             model.model.print_trainable_parameters()
+            print_trainable_parameters(model.model)
+
     if training_args.fix_position_embedding:
         for k, v in model.named_parameters():
             if "position_embeddings" in k:
