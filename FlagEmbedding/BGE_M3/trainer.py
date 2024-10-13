@@ -2,14 +2,22 @@ from sentence_transformers import SentenceTransformer, models
 from transformers.trainer import *
 
 
-def save_ckpt_for_sentence_transformers(ckpt_dir, pooling_mode: str = 'cls', normlized: bool=True):
+def save_ckpt_for_sentence_transformers(
+    ckpt_dir, pooling_mode: str = "cls", normlized: bool = True
+):
     word_embedding_model = models.Transformer(ckpt_dir)
-    pooling_model = models.Pooling(word_embedding_model.get_word_embedding_dimension(), pooling_mode=pooling_mode)
+    pooling_model = models.Pooling(
+        word_embedding_model.get_word_embedding_dimension(), pooling_mode=pooling_mode
+    )
     if normlized:
         normlize_layer = models.Normalize()
-        model = SentenceTransformer(modules=[word_embedding_model, pooling_model, normlize_layer], device='cpu')
+        model = SentenceTransformer(
+            modules=[word_embedding_model, pooling_model, normlize_layer], device="cpu"
+        )
     else:
-        model = SentenceTransformer(modules=[word_embedding_model, pooling_model], device='cpu')
+        model = SentenceTransformer(
+            modules=[word_embedding_model, pooling_model], device="cpu"
+        )
     model.save(ckpt_dir)
 
 
@@ -20,10 +28,11 @@ class BiTrainer(Trainer):
         logger.info("Saving model checkpoint to %s", output_dir)
         # Save a trained model and configuration using `save_pretrained()`.
         # They can then be reloaded using `from_pretrained()`
-        if not hasattr(self.model, 'save'):
+        if not hasattr(self.model, "save"):
             raise NotImplementedError(
-                f'MODEL {self.model.__class__.__name__} '
-                f'does not support save interface')
+                f"MODEL {self.model.__class__.__name__} "
+                f"does not support save interface"
+            )
         else:
             self.model.save(output_dir)
         if self.tokenizer is not None and self.is_world_process_zero():
@@ -32,11 +41,10 @@ class BiTrainer(Trainer):
         torch.save(self.args, os.path.join(output_dir, "training_args.bin"))
 
         # save the checkpoint for sentence-transformers library
-        if self.is_world_process_zero():
-            save_ckpt_for_sentence_transformers(output_dir,
-                                                pooling_mode=self.args.sentence_pooling_method,
-                                                normlized=self.args.normlized)
-
+        # if self.is_world_process_zero():
+        #     save_ckpt_for_sentence_transformers(output_dir,
+        #                                         pooling_mode=self.args.sentence_pooling_method,
+        #                                         normlized=self.args.normlized)
 
     def compute_loss(self, model, inputs, return_outputs=False):
         """

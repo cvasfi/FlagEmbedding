@@ -11,11 +11,6 @@ class ModelArguments:
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
     """
 
-    base_model: str = field(
-        metadata={
-            "help": "Path to pretrained model or model identifier from huggingface.co/models"
-        }
-    )
     model_name_or_path: str = field(
         metadata={
             "help": "Path to pretrained model or model identifier from huggingface.co/models"
