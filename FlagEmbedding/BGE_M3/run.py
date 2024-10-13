@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 import torch.distributed as dist
-from peft import PeftModel, prepare_model_for_kbit_training
+from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 from transformers import (
     AutoConfig,
     AutoTokenizer,
@@ -15,7 +15,7 @@ from transformers import (
     set_seed,
 )
 
-from .arguments import DataArguments, ModelArguments
+from .arguments import DataArguments, LoRAArguments, ModelArguments
 from .arguments import RetrieverTrainingArguments as TrainingArguments
 from .data import EmbedCollator, SameDatasetTrainDataset
 from .modeling import BGEM3Model
@@ -42,11 +42,16 @@ class TrainerCallbackForDataRefresh(TrainerCallback):
 
 
 def main():
-    parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
-    model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    parser = HfArgumentParser(
+        (ModelArguments, DataArguments, TrainingArguments, LoRAArguments)
+    )
+    model_args, data_args, training_args, lora_args = (
+        parser.parse_args_into_dataclasses()
+    )
     model_args: ModelArguments
     data_args: DataArguments
     training_args: TrainingArguments
+    lora_args: LoRAArguments
 
     if (
         os.path.exists(training_args.output_dir)
@@ -133,6 +138,31 @@ def main():
             self_distill_start_step=training_args.self_distill_start_step,
         )
 
+        def print_trainable_parameters(m):
+            print("Trainable parameters:")
+            for name, param in m.named_parameters():
+                if param.requires_grad:
+                    print(f"{name}: {param.size()}")
+
+        print_trainable_parameters(model.model)
+        if training_args.lora:
+            lora_config = LoraConfig(
+                r=lora_args.r,
+                lora_alpha=lora_args.alpha,
+                target_modules=[
+                    "query",
+                    "key",
+                    "value",
+                    "dense",
+                ],  # module names specific to bert (small, base, and large)
+                lora_dropout=lora_args.dropout,
+                bias="none",
+                task_type="FEATURE_EXTRACTION",
+            )
+            model.model = prepare_model_for_kbit_training(model.model, lora_config)
+            model.model.gradient_checkpointing_enable()
+            model.model = get_peft_model(model.model, lora_config)
+            model.model.print_trainable_parameters()
     if training_args.fix_position_embedding:
         for k, v in model.named_parameters():
             if "position_embeddings" in k:

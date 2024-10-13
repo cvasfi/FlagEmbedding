@@ -148,3 +148,12 @@ class RetrieverTrainingArguments(TrainingArguments):
     self_distill_start_step: int = field(
         default=-1, metadata={"help": "Num of step when using self-distill"}
     )
+    lora: bool = field(default=False, metadata={"help": "Use LoRA?"})
+    reapply_lora: bool = field(default=False, metadata={"help": "reapply LoRA config?"})
+
+
+@dataclass
+class LoRAArguments:
+    alpha: int = field(default=16, metadata={"help": "LoRA alpha parameter."})
+    r: int = field(default=8, metadata={"help": "LoRA rank parameter."})
+    dropout: float = field(default=0.0, metadata={"help": "LoRA dropout parameter."})
