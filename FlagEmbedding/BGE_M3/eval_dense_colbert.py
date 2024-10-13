@@ -360,7 +360,9 @@ def main():
     for sample in eval_data:
         ground_truths.append(sample["positive"])
     print("doing dense eval: ")
-    metrics = evaluate(retrieval_results, scores, ground_truths)
+    metrics = evaluate(
+        retrieval_results, scores, ground_truths, cutoffs=[1, 10, args.k]
+    )
 
     print(metrics)
     print()
@@ -377,7 +379,7 @@ def main():
         k=args.k,
         rr_labels=rr_labels,
     )
-    metrics = evaluate_unified(similarities, rr_labels)
+    metrics = evaluate_unified(similarities, rr_labels, cutoffs=[1, 10, args.k])
 
     print(metrics)
 
