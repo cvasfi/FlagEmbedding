@@ -8,7 +8,7 @@ import datasets
 from pprint import pprint
 from torch.utils.data import Dataset
 from transformers import DataCollatorWithPadding
-import torch.distributed as dist
+# import torch.distributed as dist
 
 from .arguments import DataArguments
 
@@ -40,8 +40,8 @@ class SameDatasetTrainDataset(Dataset):
         })
         assert isinstance(args.train_data, list) and len(args.train_data) >= 1
         
-        if dist.get_rank() == 0:
-            self.print_batch_size(batch_size=batch_size, train_group_size=args.train_group_size)
+        # if dist.get_rank() == 0:
+        self.print_batch_size(batch_size=batch_size, train_group_size=args.train_group_size)
         
         for data_dir in args.train_data:
             if not os.path.isdir(data_dir):
@@ -57,8 +57,8 @@ class SameDatasetTrainDataset(Dataset):
                     continue
                 
                 file_path = os.path.join(data_dir, file)
-                if dist.get_rank() == 0:
-                    print(f'loading data from {file_path} ...')
+                #if dist.get_rank() == 0:
+                print(f'loading data from {file_path} ...')
                 try:
                     temp_dataset = datasets.load_dataset('json', data_files=file_path, split='train', cache_dir=args.cache_path, features=context_feat)
                 except:
