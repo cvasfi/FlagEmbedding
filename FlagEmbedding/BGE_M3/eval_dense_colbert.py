@@ -200,7 +200,7 @@ def main():
         eval_data["query"],
         batch_size=args.batch_size,
         max_length=args.max_query_length,
-        return_sparse=True,
+        return_sparse=False,
         return_colbert_vecs=True,
         return_dense=True,
     )
@@ -208,7 +208,7 @@ def main():
         corpus["content"],
         batch_size=args.batch_size,
         max_length=args.max_passage_length,
-        return_sparse=True,
+        return_sparse=False,
         return_colbert_vecs=True,
         return_dense=True,
     )
@@ -246,10 +246,10 @@ def main():
     reranked_scores = []
 
     # rerank based on the unified score.
-    for indice, query_dense, query_sparse, query_colbert in zip(
+    for indice, query_dense, query_colbert in zip(
         indices,
         query_embeddings["dense_vecs"],
-        query_embeddings["lexical_weights"],
+        # query_embeddings["lexical_weights"],
         query_embeddings["colbert_vecs"],
     ):
         query_dense: torch.Tensor
@@ -274,16 +274,16 @@ def main():
         colbert_score = apply_on_query(
             query_colbert, corpus_embeddings["colbert_vecs"], model.colbert_score
         )
-        sparse_score = apply_on_query(
-            query_sparse,
-            corpus_embeddings["lexical_weights"],
-            model.compute_lexical_matching_score,
-        )
+        # sparse_score = apply_on_query(
+        #     query_sparse,
+        #     corpus_embeddings["lexical_weights"],
+        #     model.compute_lexical_matching_score,
+        # )
 
         weights = [0.4, 0.2, 0.4]
         rankings = (
             weights[0] * dense_score
-            + weights[1] * sparse_score
+            # + weights[1] * sparse_score
             + weights[2] * colbert_score
         )
         ordered_rankings_indices = np.flip(np.argsort(rankings))
