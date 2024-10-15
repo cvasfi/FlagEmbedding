@@ -103,7 +103,8 @@ class BGEM3FlagModel:
         return scores
 
     def colbert_score(self, q_reps, p_reps):
-        q_reps, p_reps = torch.from_numpy(q_reps), torch.from_numpy(p_reps)
+        if type(q_reps) is not torch.Tensor:
+            q_reps, p_reps = torch.from_numpy(q_reps), torch.from_numpy(p_reps)
         token_scores = torch.einsum("in,jn->ij", q_reps, p_reps)
         scores, _ = token_scores.max(-1)
         scores = torch.sum(scores) / q_reps.size(0)
