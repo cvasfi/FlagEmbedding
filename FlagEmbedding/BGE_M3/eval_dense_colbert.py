@@ -5,6 +5,7 @@ from typing import List, Optional
 import datasets
 import faiss
 import numpy as np
+import pandas as pd
 import torch
 from peft import PeftModel
 from sklearn.metrics import ndcg_score, roc_auc_score
@@ -56,6 +57,17 @@ class Args:
 
     peft: bool = field(default="False")
     quantize_base: bool = field(default="False")
+
+
+def read_from_store(store: pd.HDFStore, indices, asdict=False):
+    result = [None] * len(indices)
+    for ctr, idx in enumerate(indices):
+        retrieved = store[f"e_{idx}"]
+        to_insert = (
+            retrieved if not asdict else dict(zip(retrieved["key"], retrieved["value"]))
+        )
+        result[ctr] = to_insert
+    return result
 
 
 def index(
@@ -195,34 +207,46 @@ def main():
     model.model.model = PeftModel.from_pretrained(
         model.model.model, args.encoder, is_trainable=False
     )
+    len_queries = len(eval_data["query"])
+    len_corpus = len(corpus["content"])
 
-    query_embeddings = model.encode(
+    query_embeddings = model.encode_to_disk(
         eval_data["query"],
         batch_size=args.batch_size,
         max_length=args.max_query_length,
-        return_sparse=False,
+        return_sparse=True,
         return_colbert_vecs=True,
         return_dense=True,
+        pandas_store_prefix="queries",
     )
-    corpus_embeddings = model.encode(
+    corpus_embeddings = model.encode_to_disk(
         corpus["content"],
         batch_size=args.batch_size,
         max_length=args.max_passage_length,
-        return_sparse=False,
+        return_sparse=True,
         return_colbert_vecs=True,
         return_dense=True,
+        pandas_store_prefix="corpus",
     )
+    faiss_index = None
+    scores = None
+    indices = None
+    with pd.HDFStore(corpus_embeddings["dense_vecs"], mode="r") as corpus_dense_store:
+        all_corpus_embeddings = np.squeeze(
+            np.stack(read_from_store(corpus_dense_store, range(0, len_corpus)))
+        )
+        faiss_index = index(all_corpus_embeddings, index_factory=args.index_factory)
 
-    faiss_index = index(
-        corpus_embeddings["dense_vecs"], index_factory=args.index_factory
-    )
-
-    scores, indices = search(
-        query_embeddings["dense_vecs"],
-        faiss_index=faiss_index,
-        k=args.k,
-        batch_size=args.batch_size,
-    )
+    with pd.HDFStore(query_embeddings["dense_vecs"], mode="r") as query_dense_store:
+        all_query_embeddings = np.squeeze(
+            np.stack(read_from_store(query_dense_store, range(0, len_queries)))
+        )
+        scores, indices = search(
+            all_query_embeddings,
+            faiss_index=faiss_index,
+            k=args.k,
+            batch_size=args.batch_size,
+        )
 
     retrieval_results = []
     for indice in indices:
@@ -242,54 +266,80 @@ def main():
     print(metrics)
     print()
     print(f"Reranking top {args.k} and evaluating again: ")
+
     reranked_retrieval_results = []
     reranked_scores = []
+    with pd.HDFStore(
+        corpus_embeddings["dense_vecs"], mode="r"
+    ) as corpus_dense_store, pd.HDFStore(
+        corpus_embeddings["lexical_weights"], mode="r"
+    ) as corpus_sparse_store, pd.HDFStore(
+        corpus_embeddings["colbert_vecs"], mode="r"
+    ) as corpus_colbert_store, pd.HDFStore(
+        query_embeddings["dense_vecs"], mode="r"
+    ) as query_dense_store, pd.HDFStore(
+        query_embeddings["lexical_weights"], mode="r"
+    ) as query_sparse_store, pd.HDFStore(
+        query_embeddings["colbert_vecs"], mode="r"
+    ) as query_colbert_store:
 
-    # rerank based on the unified score.
-    for indice, query_dense, query_colbert in zip(
-        indices,
-        query_embeddings["dense_vecs"],
-        # query_embeddings["lexical_weights"],
-        query_embeddings["colbert_vecs"],
-    ):
-        query_dense: torch.Tensor
-        # filter invalid indices
-        indice = indice[indice != -1]
+        # rerank based on the unified score.
+        for indice, query_idx in zip(indices, range(len_queries)):
+            # filter invalid indices
+            indice = indice[indice != -1]
 
-        def apply_on_query(query_sample, corpus_data, func):
-            return np.stack(
-                [
-                    func(
-                        query_sample,
-                        corpus_data[corpus_idx],
-                    )
-                    for corpus_idx in indice
-                ]
+            def apply_on_query(query_sample, corpus_data, func):
+                return np.stack(
+                    [
+                        func(
+                            np.squeeze(query_sample.values),
+                            np.squeeze(corpus_el.values),
+                        )
+                        for corpus_el in corpus_data
+                    ]
+                )
+
+            def apply_on_query_sparse(query_sample, corpus_data, func):
+                return np.stack(
+                    [
+                        func(
+                            query_sample,
+                            corpus_el,
+                        )
+                        for corpus_el in corpus_data
+                    ]
+                )
+
+            query_dense = read_from_store(query_dense_store, [query_idx])[0]
+            query_colbert = read_from_store(query_colbert_store, [query_idx])[0]
+            query_sparse = read_from_store(query_sparse_store, [query_idx], True)[0]
+
+            corpus_dense = read_from_store(corpus_dense_store, indice)
+            corpus_colbert = read_from_store(corpus_colbert_store, indice)
+            corpus_sparse = read_from_store(corpus_sparse_store, indice, True)
+
+            dense_score = apply_on_query(query_dense, corpus_dense, np.matmul)
+
+            colbert_score = apply_on_query(
+                query_colbert, corpus_colbert, model.colbert_score
             )
 
-        dense_score = apply_on_query(
-            query_dense, corpus_embeddings["dense_vecs"], np.matmul
-        )
+            sparse_score = apply_on_query_sparse(
+                query_sparse,
+                corpus_sparse,
+                model.compute_lexical_matching_score,
+            )
 
-        colbert_score = apply_on_query(
-            query_colbert, corpus_embeddings["colbert_vecs"], model.colbert_score
-        )
-        # sparse_score = apply_on_query(
-        #     query_sparse,
-        #     corpus_embeddings["lexical_weights"],
-        #     model.compute_lexical_matching_score,
-        # )
-
-        weights = [0.4, 0.2, 0.4]
-        rankings = (
-            weights[0] * dense_score
-            # + weights[1] * sparse_score
-            + weights[2] * colbert_score
-        )
-        ordered_rankings_indices = np.flip(np.argsort(rankings))
-        ordered_indices = indice[ordered_rankings_indices]
-        reranked_scores.append(rankings[ordered_rankings_indices])
-        reranked_retrieval_results.append(corpus[ordered_indices]["content"])
+            weights = [0.4, 0.2, 0.4]
+            rankings = (
+                weights[0] * dense_score
+                + weights[1] * sparse_score
+                + weights[2] * colbert_score
+            )
+            ordered_rankings_indices = np.flip(np.argsort(rankings))
+            ordered_indices = indice[ordered_rankings_indices]
+            reranked_scores.append(rankings[ordered_rankings_indices])
+            reranked_retrieval_results.append(corpus[ordered_indices]["content"])
 
     metrics = evaluate(
         reranked_retrieval_results,
