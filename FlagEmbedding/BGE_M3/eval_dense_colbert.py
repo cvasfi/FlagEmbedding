@@ -56,7 +56,8 @@ class Args:
     )
 
     peft: bool = field(default="False")
-    quantize_base: bool = field(default="False")
+    eval_from_file: bool = field(default="False")
+    only_embeddings: bool = field(default="False")
 
 
 def read_from_store(store: pd.HDFStore, indices, asdict=False):
@@ -210,24 +211,38 @@ def main():
     len_queries = len(eval_data["query"])
     len_corpus = len(corpus["content"])
 
-    query_embeddings = model.encode_to_disk(
-        eval_data["query"],
-        batch_size=args.batch_size,
-        max_length=args.max_query_length,
-        return_sparse=True,
-        return_colbert_vecs=True,
-        return_dense=True,
-        pandas_store_prefix="queries",
-    )
-    corpus_embeddings = model.encode_to_disk(
-        corpus["content"],
-        batch_size=args.batch_size,
-        max_length=args.max_passage_length,
-        return_sparse=True,
-        return_colbert_vecs=True,
-        return_dense=True,
-        pandas_store_prefix="corpus",
-    )
+    if not args.eval_from_file:
+        query_embeddings = model.encode_to_disk(
+            eval_data["query"],
+            batch_size=args.batch_size,
+            max_length=args.max_query_length,
+            return_sparse=True,
+            return_colbert_vecs=True,
+            return_dense=True,
+            pandas_store_prefix="queries",
+        )
+        corpus_embeddings = model.encode_to_disk(
+            corpus["content"],
+            batch_size=args.batch_size,
+            max_length=args.max_passage_length,
+            return_sparse=True,
+            return_colbert_vecs=True,
+            return_dense=True,
+            pandas_store_prefix="corpus",
+        )
+    else:
+        query_embeddings = {
+            "dense_vecs": "queries_dense.h5",
+            "colbert_vecs": "queries_colbert.h5",
+            "lexical_weights": "queries_sparse.h5",
+        }
+        corpus_embeddings = {
+            "dense_vecs": "corpus_dense.h5",
+            "colbert_vecs": "corpus_colbert.h5",
+            "lexical_weights": "corpus_sparse.h5",
+        }
+    if args.only_embeddings:
+        return
     faiss_index = None
     scores = None
     indices = None
@@ -284,7 +299,9 @@ def main():
     ) as query_colbert_store:
 
         # rerank based on the unified score.
-        for indice, query_idx in zip(indices, range(len_queries)):
+        for indice, query_idx in tqdm(
+            zip(indices, range(len_queries)), "reranking embeddings..."
+        ):
             # filter invalid indices
             indice = indice[indice != -1]
 
