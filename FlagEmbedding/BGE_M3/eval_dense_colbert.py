@@ -17,6 +17,46 @@ from FlagEmbedding import BGEM3FlagModel, FlagModel
 logger = logging.getLogger(__name__)
 
 
+def apply_on_query(query_sample, corpus_data, func):
+    # Converting to torch tensors and moving to GPU
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    query_sample_torch = torch.tensor(query_sample.values).to(device)
+    corpus_data_torch = [
+        torch.tensor(corpus_el.values).to(device) for corpus_el in corpus_data
+    ]
+
+    return (
+        torch.stack(
+            [
+                func(query_sample_torch.squeeze(), corpus_el_torch.squeeze())
+                for corpus_el_torch in corpus_data_torch
+            ]
+        )
+        .cpu()
+        .numpy()
+    )  # Convert back to NumPy if necessary after the GPU computation
+
+
+def apply_on_query_sparse(query_sample, corpus_data, func):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Assuming the sparse scores are smaller and can be processed on the GPU
+    query_sample_torch = torch.tensor(query_sample).to(device)
+    corpus_data_torch = [
+        torch.tensor(corpus_el).to(device) for corpus_el in corpus_data
+    ]
+
+    return (
+        torch.stack(
+            [
+                func(query_sample_torch, corpus_el_torch)
+                for corpus_el_torch in corpus_data_torch
+            ]
+        )
+        .cpu()
+        .numpy()
+    )  # Convert back to NumPy if necessary
+
+
 @dataclass
 class Args:
     encoder: str = field(
@@ -305,52 +345,52 @@ def main():
             # filter invalid indices
             indice = indice[indice != -1]
 
-            def apply_on_query(query_sample, corpus_data, func):
-                return np.stack(
-                    [
-                        func(
-                            np.squeeze(query_sample.values),
-                            np.squeeze(corpus_el.values),
-                        )
-                        for corpus_el in corpus_data
-                    ]
-                )
-
-            def apply_on_query_sparse(query_sample, corpus_data, func):
-                return np.stack(
-                    [
-                        func(
-                            query_sample,
-                            corpus_el,
-                        )
-                        for corpus_el in corpus_data
-                    ]
-                )
+            # def apply_on_query_(query_sample, corpus_data, func):
+            #     return np.stack(
+            #         [
+            #             func(
+            #                 np.squeeze(query_sample.values),
+            #                 np.squeeze(corpus_el.values),
+            #             )
+            #             for corpus_el in corpus_data
+            #         ]
+            #     )
+            #
+            # def apply_on_query_sparse_(query_sample, corpus_data, func):
+            #     return np.stack(
+            #         [
+            #             func(
+            #                 query_sample,
+            #                 corpus_el,
+            #             )
+            #             for corpus_el in corpus_data
+            #         ]
+            #     )
 
             query_dense = read_from_store(query_dense_store, [query_idx])[0]
             query_colbert = read_from_store(query_colbert_store, [query_idx])[0]
-            query_sparse = read_from_store(query_sparse_store, [query_idx], True)[0]
+            # query_sparse = read_from_store(query_sparse_store, [query_idx], True)[0]
 
             corpus_dense = read_from_store(corpus_dense_store, indice)
             corpus_colbert = read_from_store(corpus_colbert_store, indice)
-            corpus_sparse = read_from_store(corpus_sparse_store, indice, True)
+            # corpus_sparse = read_from_store(corpus_sparse_store, indice, True)
 
-            dense_score = apply_on_query(query_dense, corpus_dense, np.matmul)
+            dense_score = apply_on_query(query_dense, corpus_dense, torch.matmul)
 
             colbert_score = apply_on_query(
                 query_colbert, corpus_colbert, model.colbert_score
             )
 
-            sparse_score = apply_on_query_sparse(
-                query_sparse,
-                corpus_sparse,
-                model.compute_lexical_matching_score,
-            )
-
+            # sparse_score = apply_on_query_sparse(
+            #     query_sparse,
+            #     corpus_sparse,
+            #     model.compute_lexical_matching_score,
+            # )
+            #
             weights = [0.4, 0.2, 0.4]
             rankings = (
                 weights[0] * dense_score
-                + weights[1] * sparse_score
+                # + weights[1] * sparse_score
                 + weights[2] * colbert_score
             )
             ordered_rankings_indices = np.flip(np.argsort(rankings))
