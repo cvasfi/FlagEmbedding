@@ -1,5 +1,6 @@
 import logging
 import os
+import random
 from pathlib import Path
 
 import torch.distributed as dist
@@ -124,6 +125,22 @@ def main():
         model.model = PeftModel.from_pretrained(
             model.model, model_args.model_name_or_path, is_trainable=True
         )
+        model.model.print_trainable_parameters()
+    elif training_args.reapply_lora:
+        model = BGEM3Model(
+            model_name="BAAI/bge-m3",
+            normlized=training_args.normlized,
+            sentence_pooling_method=training_args.sentence_pooling_method,
+            negatives_cross_device=training_args.negatives_cross_device,
+            temperature=training_args.temperature,
+            enable_sub_batch=training_args.enable_sub_batch,
+            unified_finetuning=training_args.unified_finetuning,
+            use_self_distill=training_args.use_self_distill,
+            colbert_dim=training_args.colbert_dim,
+            self_distill_start_step=training_args.self_distill_start_step,
+        )
+        model.model = prepare_model_for_kbit_training(model.model)
+        model.model.gradient_checkpointing_enable()
     else:
         model = BGEM3Model(
             model_name=model_args.model_name_or_path,
@@ -138,31 +155,54 @@ def main():
             self_distill_start_step=training_args.self_distill_start_step,
         )
 
-        def print_trainable_parameters(m):
-            print("Trainable parameters:")
-            for name, param in m.named_parameters():
-                if param.requires_grad:
-                    print(f"{name}: {param.size()}")
+    def print_trainable_parameters(m):
+        print("Trainable parameters:")
+        for name, param in m.named_parameters():
+            if param.requires_grad:
+                print(f"{name}: {param.size()}")
 
-        if training_args.lora:
-            lora_config = LoraConfig(
-                r=lora_args.r,
-                lora_alpha=lora_args.alpha,
-                target_modules=[
-                    "query",
-                    "key",
-                    "value",
-                    "dense",
-                ],  # module names specific to bert (small, base, and large)
-                lora_dropout=lora_args.dropout,
-                bias="none",
-                task_type="FEATURE_EXTRACTION",
-            )
-            model.model = prepare_model_for_kbit_training(model.model, lora_config)
-            model.model.gradient_checkpointing_enable()
-            model.model = get_peft_model(model.model, lora_config)
-            model.model.print_trainable_parameters()
-            print_trainable_parameters(model.model)
+    if training_args.lora:
+        lora_config = LoraConfig(
+            r=lora_args.r,
+            lora_alpha=lora_args.alpha,
+            target_modules=[
+                "query",
+                "key",
+                "value",
+                "dense",
+            ],  # module names specific to bert (small, base, and large)
+            lora_dropout=lora_args.dropout,
+            bias="none",
+            task_type="FEATURE_EXTRACTION",
+        )
+        model.model = prepare_model_for_kbit_training(model.model, lora_config)
+        model.model.gradient_checkpointing_enable()
+        model.model = get_peft_model(model.model, lora_config)
+        model.model.print_trainable_parameters()
+        print_trainable_parameters(model.model)
+
+    if training_args.reapply_lora is True:
+        # 1. Changing the lora config to include word embedding layer as well for more aggressive finetuning.
+        lora_config = LoraConfig(
+            r=lora_args.r,
+            lora_alpha=lora_args.alpha,
+            target_modules=[
+                "query",
+                "key",
+                "value",
+                "dense",
+                "word_embeddings",
+            ],  # module names specific to bert (small, base, and large)
+            lora_dropout=lora_args.dropout,
+            bias="none",
+            task_type="FEATURE_EXTRACTION",
+        )
+        model.model = get_peft_model(model.model, lora_config)
+        # model.add_adapter("default", lora_config)
+        # 3. Load existing adapter weights
+        model.model.load_adapter(model_args.model_name_or_path, adapter_name="default")
+        model.model.print_trainable_parameters()
+        print_trainable_parameters(model.model)
 
     if training_args.fix_position_embedding:
         for k, v in model.named_parameters():
@@ -195,7 +235,7 @@ def main():
         query_max_len=data_args.query_max_len,
         passage_max_len=data_args.passage_max_len,
     )
-
+    train_dataset.dataset = train_dataset.dataset.shuffle(random.randint(0, 10000))
     trainer = BiTrainer(
         model=model,
         args=training_args,
