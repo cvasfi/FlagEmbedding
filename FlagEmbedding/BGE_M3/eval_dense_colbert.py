@@ -221,6 +221,17 @@ def main():
             "json", data_files=args.corpus_data, split="train"
         )
 
+    def filter_query(element):
+        return len(element["query"]) > 0 and all(
+            [len(n) > 0 for n in element["positive"]]
+        )
+
+    def filter_corpus(element):
+        return len(element["content"]) > 0
+
+    filtered_eval_data = eval_data.filter(filter_query)
+    filtered_corpus = corpus.filter(filter_corpus)
+
     model = BGEM3FlagModel(
         "BAAI/bge-m3", use_fp16=True
     )  # Setting use_fp16 to True speeds up computation with a slight performance degradation
@@ -228,12 +239,17 @@ def main():
     model.model.model = PeftModel.from_pretrained(
         model.model.model, args.encoder, is_trainable=False
     )
-    len_queries = len(eval_data["query"])
-    len_corpus = len(corpus["content"])
-
+    len_queries = len(filtered_eval_data["query"])
+    len_corpus = len(filtered_corpus["content"])
+    print(
+        f"Removed { len(corpus["content"]) - len(filtered_corpus["content"])} empty corpus elements"
+    )
+    print(
+        f"Removed { len(eval_data["query"]) - len(filtered_eval_data["query"])} empty corpus elements"
+    )
     if not args.eval_from_file:
         query_embeddings = model.encode_to_disk(
-            eval_data["query"],
+            filtered_eval_data["query"],
             batch_size=args.batch_size,
             max_length=args.max_query_length,
             return_sparse=True,
@@ -242,7 +258,7 @@ def main():
             pandas_store_prefix="queries",
         )
         corpus_embeddings = model.encode_to_disk(
-            corpus["content"],
+            filtered_corpus["content"],
             batch_size=args.batch_size,
             max_length=args.max_passage_length,
             return_sparse=True,
@@ -287,10 +303,10 @@ def main():
     for indice in indices:
         # filter invalid indices
         indice = indice[indice != -1].tolist()
-        retrieval_results.append(corpus[indice]["content"])
+        retrieval_results.append(filtered_corpus[indice]["content"])
 
     ground_truths = []
-    for sample in eval_data:
+    for sample in filtered_eval_data:
         ground_truths.append(sample["positive"])
 
     print("doing dense eval: ")
@@ -376,7 +392,9 @@ def main():
             ordered_rankings_indices = np.flip(np.argsort(rankings))
             ordered_indices = indice[ordered_rankings_indices]
             reranked_scores.append(rankings[ordered_rankings_indices])
-            reranked_retrieval_results.append(corpus[ordered_indices]["content"])
+            reranked_retrieval_results.append(
+                filtered_corpus[ordered_indices]["content"]
+            )
 
     metrics = evaluate(
         reranked_retrieval_results,
