@@ -241,12 +241,6 @@ def main():
     )
     len_queries = len(filtered_eval_data["query"])
     len_corpus = len(filtered_corpus["content"])
-    print(
-        f"Removed { len(corpus["content"]) - len(filtered_corpus["content"])} empty corpus elements"
-    )
-    print(
-        f"Removed { len(eval_data["query"]) - len(filtered_eval_data["query"])} empty corpus elements"
-    )
     if not args.eval_from_file:
         query_embeddings = model.encode_to_disk(
             filtered_eval_data["query"],
