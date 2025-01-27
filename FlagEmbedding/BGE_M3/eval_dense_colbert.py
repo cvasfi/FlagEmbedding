@@ -74,8 +74,8 @@ class Args:
     save_path: str = field(
         default="embeddings.memmap", metadata={"help": "Path to save embeddings."}
     )
-
-    peft: bool = field(default="False")
+    quantized: bool = field(default="True")
+    peft: bool = field(default="True")
     eval_from_file: bool = field(default="False")
     only_embeddings: bool = field(default="False")
 
@@ -233,12 +233,13 @@ def main():
     filtered_corpus = corpus.filter(filter_corpus)
 
     model = BGEM3FlagModel(
-        "BAAI/bge-m3", use_fp16=True
+        "BAAI/bge-m3", use_fp16=True, quantized=args.quantized
     )  # Setting use_fp16 to True speeds up computation with a slight performance degradation
+    if args.peft:
+        model.model.model = PeftModel.from_pretrained(
+            model.model.model, args.encoder, is_trainable=False
+        )
 
-    model.model.model = PeftModel.from_pretrained(
-        model.model.model, args.encoder, is_trainable=False
-    )
     len_queries = len(filtered_eval_data["query"])
     len_corpus = len(filtered_corpus["content"])
     if not args.eval_from_file:

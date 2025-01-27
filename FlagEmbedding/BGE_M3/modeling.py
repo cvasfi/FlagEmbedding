@@ -36,9 +36,10 @@ class BGEM3Model(nn.Module):
         use_self_distill: bool = False,
         colbert_dim: int = -1,
         self_distill_start_step: int = -1,
+        quantized=False,
     ):
         super().__init__()
-        self.load_model(model_name, colbert_dim=colbert_dim)
+        self.load_model(model_name, colbert_dim=colbert_dim, quantized=quantized)
         self.vocab_size = self.model.config.vocab_size
         self.cross_entropy = nn.CrossEntropyLoss(reduction="mean")
 
@@ -71,7 +72,7 @@ class BGEM3Model(nn.Module):
             self.process_rank = dist.get_rank()
             self.world_size = dist.get_world_size()
 
-    def load_model(self, model_name, colbert_dim: int = -1):
+    def load_model(self, model_name, colbert_dim: int = -1, quantized: bool = False):
         if not os.path.exists(model_name):
             cache_folder = os.getenv("HF_HUB_CACHE")
             model_name = snapshot_download(
@@ -79,10 +80,13 @@ class BGEM3Model(nn.Module):
                 cache_dir=cache_folder,
                 ignore_patterns=["flax_model.msgpack", "rust_model.ot", "tf_model.h5"],
             )
-        bnb_config = BitsAndBytesConfig(load_in_8bit=True)
-        self.model = AutoModel.from_pretrained(
-            model_name, quantization_config=bnb_config
-        )
+        if quantized:
+            bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+            self.model = AutoModel.from_pretrained(
+                model_name, quantization_config=bnb_config
+            )
+        else:
+            self.model = AutoModel.from_pretrained(model_name)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
 
         self.colbert_linear = torch.nn.Linear(

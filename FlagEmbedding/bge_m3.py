@@ -43,12 +43,14 @@ class BGEM3FlagModel:
         normalize_embeddings: bool = True,
         use_fp16: bool = True,
         device: str = None,
+        quantized: bool = True,
     ) -> None:
 
         self.model = BGEM3ForInference(
             model_name=model_name_or_path,
             normlized=normalize_embeddings,
             sentence_pooling_method=pooling_method,
+            quantized=quantized,
         )
 
         self.tokenizer = self.model.tokenizer

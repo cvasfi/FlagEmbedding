@@ -118,6 +118,7 @@ def main():
             use_self_distill=training_args.use_self_distill,
             colbert_dim=training_args.colbert_dim,
             self_distill_start_step=training_args.self_distill_start_step,
+            quantized=True,
         )
 
         model.model = prepare_model_for_kbit_training(model.model)
@@ -138,6 +139,7 @@ def main():
             use_self_distill=training_args.use_self_distill,
             colbert_dim=training_args.colbert_dim,
             self_distill_start_step=training_args.self_distill_start_step,
+            quantized=True,
         )
         model.model = prepare_model_for_kbit_training(model.model)
         model.model.gradient_checkpointing_enable()
@@ -153,6 +155,7 @@ def main():
             use_self_distill=training_args.use_self_distill,
             colbert_dim=training_args.colbert_dim,
             self_distill_start_step=training_args.self_distill_start_step,
+            quantized=True,
         )
 
     def print_trainable_parameters(m):
