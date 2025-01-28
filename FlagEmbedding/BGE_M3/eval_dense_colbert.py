@@ -78,6 +78,7 @@ class Args:
     peft: bool = field(default="True")
     eval_from_file: bool = field(default="False")
     only_embeddings: bool = field(default="False")
+    merge_full: bool = field(default="False")
 
 
 def read_from_store(store: pd.HDFStore, indices, asdict=False):
@@ -239,6 +240,12 @@ def main():
         model.model.model = PeftModel.from_pretrained(
             model.model.model, args.encoder, is_trainable=False
         )
+        if args.merge_full:
+            for param in model.parameters():
+                param.data = param.data.half()  # or param.data.float()
+                model = (
+                    model.merge_and_unload()
+                )  # if you're using PEFT's built-in merging
 
     len_queries = len(filtered_eval_data["query"])
     len_corpus = len(filtered_corpus["content"])
