@@ -241,11 +241,11 @@ def main():
             model.model.model, args.encoder, is_trainable=False
         )
         if args.merge_full:
-            for param in model.parameters():
+            for param in model.model.model.parameters():
                 param.data = param.data.half()  # or param.data.float()
-                model = (
-                    model.merge_and_unload()
-                )  # if you're using PEFT's built-in merging
+            model.model.model = (
+                model.model.model.merge_and_unload()
+            )  # if you're using PEFT's built-in merging
 
     len_queries = len(filtered_eval_data["query"])
     len_corpus = len(filtered_corpus["content"])
