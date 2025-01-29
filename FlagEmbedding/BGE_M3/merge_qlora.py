@@ -41,13 +41,13 @@ def main():
         temperature=0.02,
         unified_finetuning=True,
         use_self_distill=True,
-        quantized=True,
+        quantized=False,
     )
     model.model = PeftModel.from_pretrained(
         model.model, args.input_dir, is_trainable=True
     )
-    for param in model.model.parameters():
-        param.data = param.data.float()
+    # for param in model.model.parameters():
+    #    param.data = param.data.float()
     model.model = model.model.merge_and_unload()
 
     model.save(args.output_dir)
