@@ -52,12 +52,11 @@ class Args:
     save_path: str = field(
         default="embeddings.memmap", metadata={"help": "Path to save embeddings."}
     )
-
-    quantized: bool = field(default="True")
-    peft: bool = field(default="True")
-    eval_from_file: bool = field(default="False")
-    only_embeddings: bool = field(default="False")
-    merge_full: bool = field(default="False")
+    base_model: str = field(
+        default="BAAI/bge-m3", metadata={"help": "Full model path or huggingface name"}
+    )
+    quantized: bool = field(default="False")
+    peft: bool = field(default="False")
 
 
 def index(
@@ -235,19 +234,13 @@ def main():
         )
 
     model = BGEM3FlagModel(
-        "BAAI/bge-m3", use_fp16=True, quantized=args.quantized
+        args.base_model, use_fp16=True, quantized=args.quantized, device="cpu"
     )  # Setting use_fp16 to True speeds up computation with a slight performance degradation
 
     if args.peft:
         model.model.model = PeftModel.from_pretrained(
             model.model.model, args.encoder, is_trainable=False
         )
-        if args.merge_full:
-            for param in model.model.model.parameters():
-                param.data = param.data.half()  # or param.data.float()
-            model.model.model = (
-                model.model.model.merge_and_unload()
-            )  # if you're using PEFT's built-in merging
 
     faiss_index = index(
         model=model,
