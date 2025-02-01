@@ -234,7 +234,7 @@ def main():
         )
 
     model = BGEM3FlagModel(
-        args.base_model, use_fp16=True, quantized=args.quantized, device="cpu"
+        args.base_model, use_fp16=True, quantized=args.quantized
     )  # Setting use_fp16 to True speeds up computation with a slight performance degradation
 
     if args.peft:

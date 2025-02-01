@@ -5,6 +5,8 @@ from typing import Dict
 
 from optimum.exporters.onnx import onnx_export_from_model
 from optimum.exporters.onnx.model_configs import XLMRobertaOnnxConfig
+from optimum.onnxruntime import ORTQuantizer
+from optimum.onnxruntime.configuration import AutoQuantizationConfig
 from transformers_fake_module import BGEM3InferenceModel
 
 
@@ -27,10 +29,18 @@ class BGEM3OnnxConfig(XLMRobertaOnnxConfig):
         )
 
 
-def main(input: str, output: str, opset: int, device: str, optimize: str, atol: str):
+def main(
+    input: str,
+    output: str,
+    opset: int,
+    device: str,
+    optimize: str,
+    atol: str,
+    quantize: bool,
+):
     model = BGEM3InferenceModel(model_name=input)
+    model = model.to(device)
     bgem3_onnx_config = BGEM3OnnxConfig(model.config)
-    print(f"module: {model.__module__}")
     onnx_export_from_model(
         model,
         output=output,
@@ -40,8 +50,11 @@ def main(input: str, output: str, opset: int, device: str, optimize: str, atol: 
         optimize=optimize,
         atol=atol,
         device=device,
-        library="transformers",
     )
+    if quantize:
+        quantizer = ORTQuantizer.from_pretrained(output, file_name="model.onnx")
+        qconfig = AutoQuantizationConfig.avx512_vnni(is_static=False, per_channel=True)
+        quantizer.quantize(save_dir=output, quantization_config=qconfig)
 
 
 if __name__ == "__main__":
@@ -87,6 +100,21 @@ if __name__ == "__main__":
         default=None,
         help="If specified, the absolute difference tolerance when validating the model. Otherwise, the default atol for the model will be used.",
     )
+
+    parser.add_argument(
+        "--quantize",
+        type=bool,
+        default=False,
+        help="If specified, the model will be quantized using ONNX Runtime quantization",
+    )
     args = parser.parse_args()
 
-    main(args.input, args.output, args.opset, args.device, args.optimize, args.atol)
+    main(
+        args.input,
+        args.output,
+        args.opset,
+        args.device,
+        args.optimize,
+        args.atol,
+        args.quantize,
+    )
